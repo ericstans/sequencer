@@ -475,9 +475,11 @@ if (volSlider) {
 			osc.stop(audioCtx.currentTime + duration);
 			osc.onended = () => gain.disconnect();
 		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
-			// Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound an octave lower
+			
 			let midiFreq = freq;
-			if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 2;
+            // DISABLED -- Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound an octave lower
+			//if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 2;
+
 			// True MIDI playback using JZZ.js
 			// Convert frequency to MIDI note number
 			const midiNote = Math.round(69 + 12 * Math.log2(midiFreq / 440));
