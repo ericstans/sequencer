@@ -67,9 +67,90 @@
             </div>
         </div>
     <div id="controls">
-        <label style="margin-left:16px;">Master Volume:
+        <label style="margin-left:16px;">Pattern Volume:
             <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.8" style="vertical-align:middle;width:120px;">
         </label>
+        <label style="margin-left:16px;">Drum Volume:
+            <input type="range" id="drum-volume" min="0" max="1" step="0.01" value="0.8" style="vertical-align:middle;width:120px;">
+        </label>
+        <div id="timbre-selectors" style="margin: 12px 0; display: flex; justify-content: center; gap: 18px;">
+            <div>
+                <label style="color:red;">Red:
+                    <select class="timbre-dropdown" data-color="red">
+                        <option value="kalimba">Kalimba (MIDI)</option>
+                        <option value="steel_drums">Steel Drums (MIDI)</option>
+                        <option value="sine">Sine (default)</option>
+                        <option value="square">Square</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="acoustic_grand_piano">Acoustic Grand Piano (MIDI)</option>
+                        <option value="electric_piano">Electric Piano (MIDI)</option>
+                        <option value="organ">Organ (MIDI)</option>
+                        <option value="guitar">Guitar (MIDI)</option>
+                        <option value="violin">Violin (MIDI)</option>
+                        <option value="clarinet">Clarinet (MIDI)</option>
+                        <option value="flute">Flute (MIDI)</option>
+                    </select>
+                </label>
+            </div>
+            <div>
+                <label style="color:blue;">Blue:
+                    <select class="timbre-dropdown" data-color="blue">
+                        <option value="kalimba">Kalimba (MIDI)</option>
+                        <option value="steel_drums">Steel Drums (MIDI)</option>
+                        <option value="square">Square (default)</option>
+                        <option value="sine">Sine</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="acoustic_grand_piano">Acoustic Grand Piano (MIDI)</option>
+                        <option value="electric_piano">Electric Piano (MIDI)</option>
+                        <option value="organ">Organ (MIDI)</option>
+                        <option value="guitar">Guitar (MIDI)</option>
+                        <option value="violin">Violin (MIDI)</option>
+                        <option value="clarinet">Clarinet (MIDI)</option>
+                        <option value="flute">Flute (MIDI)</option>
+                    </select>
+                </label>
+            </div>
+            <div>
+                <label style="color:green;">Green:
+                    <select class="timbre-dropdown" data-color="green">
+                        <option value="kalimba">Kalimba (MIDI)</option>
+                        <option value="steel_drums">Steel Drums (MIDI)</option>
+                        <option value="triangle">Triangle (default)</option>
+                        <option value="sine">Sine</option>
+                        <option value="square">Square</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="acoustic_grand_piano">Acoustic Grand Piano (MIDI)</option>
+                        <option value="electric_piano">Electric Piano (MIDI)</option>
+                        <option value="organ">Organ (MIDI)</option>
+                        <option value="guitar">Guitar (MIDI)</option>
+                        <option value="violin">Violin (MIDI)</option>
+                        <option value="clarinet">Clarinet (MIDI)</option>
+                        <option value="flute">Flute (MIDI)</option>
+                    </select>
+                </label>
+            </div>
+            <div>
+                <label style="color:gold;">Yellow:
+                    <select class="timbre-dropdown" data-color="yellow">
+                        <option value="kalimba">Kalimba (MIDI)</option>
+                        <option value="steel_drums">Steel Drums (MIDI)</option>
+                        <option value="sawtooth">Sawtooth (default)</option>
+                        <option value="sine">Sine</option>
+                        <option value="square">Square</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="acoustic_grand_piano">Acoustic Grand Piano (MIDI)</option>
+                        <option value="electric_piano">Electric Piano (MIDI)</option>
+                        <option value="organ">Organ (MIDI)</option>
+                        <option value="guitar">Guitar (MIDI)</option>
+                        <option value="violin">Violin (MIDI)</option>
+                        <option value="clarinet">Clarinet (MIDI)</option>
+                        <option value="flute">Flute (MIDI)</option>
+                    </select>
+                </label>
+            </div>
+        </div>
         <label>BPM: <input type="number" id="bpm" value="120" min="40" max="300"></label>
         <label style="margin-left:16px;">Scale:
             <select id="scale-select">
@@ -97,7 +178,16 @@
     <button id="halve-length">Halve Length</button>
     <button id="randomize">Randomize</button>
     <button id="clear-local-storage">Clear Local Storage</button>
+    <label style="margin-left:16px;">Drum Style:
+        <select id="drum-style-select">
+            <option value="909">909</option>
+            <option value="classic">Classic</option>
+        </select>
+    </label>
     </div>
+    <!-- JZZ.js and JZZ-synth for MIDI playback -->
+    <script src="https://cdn.jsdelivr.net/npm/jzz"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jzz-synth-tiny"></script>
     <script src="index.js"></script>
 </body>
 </html>

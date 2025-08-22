@@ -1,7 +1,22 @@
 const randomizeBtn = document.getElementById('randomize');
 if (randomizeBtn) {
 	randomizeBtn.onclick = () => {
-		// For each column, randomly select up to 3 rows to turn on, avoiding adjacent notes
+		// All possible timbres (synth and MIDI) matching the select lists
+		const allTimbres = [
+			{ type: 'sine' },
+			{ type: 'square' },
+			{ type: 'triangle' },
+			{ type: 'sawtooth' },
+			{ midi: 0, name: 'acoustic_grand_piano' },
+			{ midi: 4, name: 'electric_piano' },
+			{ midi: 16, name: 'organ' },
+			{ midi: 24, name: 'guitar' },
+			{ midi: 40, name: 'violin' },
+			{ midi: 71, name: 'clarinet' },
+			{ midi: 73, name: 'flute' },
+			{ midi: 108, name: 'kalimba' },
+			{ midi: 114, name: 'steel_drums' }
+		];
 		for (let col = 0; col < COLS; col++) {
 			const noteCount = Math.floor(Math.random() * 4); // 0-3
 			let notesLeft = noteCount;
@@ -31,8 +46,18 @@ if (randomizeBtn) {
 					for (let i = 0; i < colorCount; i++) {
 						if (colorPool.length === 0) break;
 						let colorIdx = Math.floor(Math.random() * colorPool.length);
-						colors.push(colorPool[colorIdx]);
+						const color = colorPool[colorIdx];
+						colors.push(color);
 						colorPool.splice(colorIdx, 1);
+						// Randomize the timbre for this color
+						const t = allTimbres[Math.floor(Math.random() * allTimbres.length)];
+						COLOR_TIMBRES[color] = t;
+						// Also update the dropdown if present
+						const sel = document.querySelector(`.timbre-dropdown[data-color='${color}']`);
+						if (sel) {
+							if (t.type) sel.value = t.type;
+							else if (t.name) sel.value = t.name;
+						}
 					}
 					grid[row][col] = colors;
 				} else {
@@ -146,12 +171,63 @@ updatePitches();
 
 // Color/timbre support
 const NOTE_COLORS = ['red', 'blue', 'green', 'yellow'];
-const COLOR_TIMBRES = {
+// Default timbres
+const DEFAULT_TIMBRES = {
+	red:   'sine',
+	blue:  'square',
+	green: 'triangle',
+	yellow:'sawtooth'
+};
+// Map color to current timbre (waveform or MIDI instrument)
+let COLOR_TIMBRES = {
 	red:   { type: 'sine' },
 	blue:  { type: 'square' },
 	green: { type: 'triangle' },
 	yellow:{ type: 'sawtooth' }
 };
+
+// JZZ MIDI setup
+let midiOut = null;
+let midiReady = false;
+window.addEventListener('DOMContentLoaded', () => {
+	if (window.JZZ && window.JZZ.synth && !midiOut) {
+		midiOut = JZZ().openMidiOut().or(() => { midiReady = false; });
+		if (midiOut) {
+			midiReady = true;
+			// Use the built-in software synth
+			JZZ.synth.Tiny.register('WebAudioTinySynth');
+			midiOut = JZZ().openMidiOut('WebAudioTinySynth');
+		}
+	}
+});
+
+// Map MIDI instrument names to General MIDI program numbers (subset)
+const MIDI_PROGRAMS = {
+	acoustic_grand_piano: 0,
+	electric_piano: 4,
+	organ: 16,
+	guitar: 24,
+	violin: 40,
+	clarinet: 71,
+	flute: 73,
+	kalimba: 108,
+	steel_drums: 114
+};
+
+// Handle timbre dropdown changes
+window.addEventListener('DOMContentLoaded', () => {
+	document.querySelectorAll('.timbre-dropdown').forEach(sel => {
+		sel.addEventListener('change', e => {
+			const color = sel.dataset.color;
+			const val = sel.value;
+			if (['sine','square','triangle','sawtooth'].includes(val)) {
+				COLOR_TIMBRES[color] = { type: val };
+			} else if (MIDI_PROGRAMS[val] !== undefined) {
+				COLOR_TIMBRES[color] = { midi: MIDI_PROGRAMS[val], name: val };
+			}
+		});
+	});
+});
 let currentColor = 'red';
 
 // Try to load state from localStorage
@@ -207,6 +283,15 @@ let audioCtx = null;
 let sequencerBus = null;
 let masterGain = null;
 let sequencerCompressor = null;
+
+// Drum volume node
+let drumGain = null;
+const drumVolSlider = document.getElementById('drum-volume');
+if (drumVolSlider) {
+	drumVolSlider.addEventListener('input', () => {
+		if (drumGain) drumGain.gain.value = parseFloat(drumVolSlider.value);
+	});
+}
 
 const sequencer = document.getElementById('sequencer');
 const drumGridDiv = document.getElementById('drum-grid');
@@ -328,114 +413,321 @@ if (volSlider) {
 	});
 }
 	colors.forEach(color => {
-		const osc = audioCtx.createOscillator();
-		const gain = audioCtx.createGain();
-		osc.type = COLOR_TIMBRES[color]?.type || 'sine';
-		osc.frequency.value = freq;
-		gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-		// Add a short fade-out envelope to avoid clicks
-		gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-		gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration - 0.02);
-		osc.connect(gain).connect(sequencerBus);
-		osc.start();
-		osc.stop(audioCtx.currentTime + duration);
-		osc.onended = () => gain.disconnect();
+		const timbre = COLOR_TIMBRES[color] || { type: 'sine' };
+		if (timbre.type) {
+			// WebAudio synth
+			const osc = audioCtx.createOscillator();
+			const gain = audioCtx.createGain();
+			osc.type = timbre.type;
+			osc.frequency.value = freq;
+			gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+			gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+			gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration - 0.02);
+			osc.connect(gain).connect(sequencerBus);
+			osc.start();
+			osc.stop(audioCtx.currentTime + duration);
+			osc.onended = () => gain.disconnect();
+		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
+			// True MIDI playback using JZZ.js
+			// Convert frequency to MIDI note number
+			const midiNote = Math.round(69 + 12 * Math.log2(freq / 440));
+			// Scale velocity by pattern volume slider
+			let vol = 1.0;
+			const volSlider = document.getElementById('master-volume');
+			if (volSlider) vol = parseFloat(volSlider.value);
+			const velocity = Math.round(100 * vol); // scale 0-100
+			const channel = 0; // All colors use channel 0 for now
+			midiOut.program(channel, timbre.midi);
+			midiOut.noteOn(channel, midiNote, velocity);
+			setTimeout(() => {
+				midiOut.noteOff(channel, midiNote, 0);
+			}, duration * 1000);
+		} else {
+			// Fallback: WebAudio sine
+			const osc = audioCtx.createOscillator();
+			const gain = audioCtx.createGain();
+			osc.type = 'sine';
+			osc.frequency.value = freq;
+			gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+			gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+			gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration - 0.02);
+			osc.connect(gain).connect(sequencerBus);
+			osc.start();
+			osc.stop(audioCtx.currentTime + duration);
+			osc.onended = () => gain.disconnect();
+		}
 	});
 }
 
 // Simple drum synths
+
+let drumStyle = localStorage.getItem('drumStyle') || '909';
+const drumStyleSelect = document.getElementById('drum-style-select');
+if (drumStyleSelect) {
+	drumStyleSelect.value = drumStyle;
+	drumStyleSelect.addEventListener('change', () => {
+		drumStyle = drumStyleSelect.value;
+		localStorage.setItem('drumStyle', drumStyle);
+	});
+}
+
+// Track open hi-hat sources for choke
+let openHatSources = [];
+
 function playDrum(row) {
 	if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	if (!drumGain) {
+		drumGain = audioCtx.createGain();
+		drumGain.gain.value = drumVolSlider ? parseFloat(drumVolSlider.value) : 0.8;
+		drumGain.connect(audioCtx.destination);
+	}
 	const now = audioCtx.currentTime;
-	if (row === 0) { // Closed hi-hat
-		const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
-		const data = buffer.getChannelData(0);
-		for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 100);
-		const src = audioCtx.createBufferSource();
-		src.buffer = buffer;
-		// Add lowpass filter to roll off highs
-		const lp = audioCtx.createBiquadFilter();
-		lp.type = 'lowpass';
-		lp.frequency.value = 8000;
-		// Lower gain
-		const gain = audioCtx.createGain();
-		gain.gain.value = 0.18;
-		src.connect(lp).connect(gain).connect(audioCtx.destination);
-		src.start();
-		src.stop(now + 0.05);
-	} else if (row === 1) { // Open hi-hat
-		const ohhDecay = 0.6;
-		const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * ohhDecay, audioCtx.sampleRate);
-		const data = buffer.getChannelData(0);
-		for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 1800);
-		const src = audioCtx.createBufferSource();
-		src.buffer = buffer;
-		const gain = audioCtx.createGain();
-		gain.gain.value = 0.25;
-		src.connect(gain).connect(audioCtx.destination);
-		src.start();
-		src.stop(now + ohhDecay);
-	} else if (row === 2) { // Snare
-		// Initial noise transient (snap)
-		const snapLen = 0.018;
-		const snapBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * snapLen, audioCtx.sampleRate);
-		const snapData = snapBuffer.getChannelData(0);
-		for (let i = 0; i < snapData.length; i++) {
-			snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 60);
-		}
-	const snapSrc = audioCtx.createBufferSource();
-	snapSrc.buffer = snapBuffer;
-	const snapLP = audioCtx.createBiquadFilter();
-	snapLP.type = 'lowpass';
-	snapLP.frequency.value = 2500;
-	const snapGain = audioCtx.createGain();
-	snapGain.gain.value = 0.45;
-	snapSrc.connect(snapLP).connect(snapGain).connect(audioCtx.destination);
-	snapSrc.start(now);
-	snapSrc.stop(now + snapLen);
+	if (drumStyle === '909') {
+		if (row === 0) {
+			// Choke open hats
+			openHatSources.forEach(src => { try { src.stop(); } catch(e){} });
+			openHatSources = [];
+			// 909 Closed hi-hat
+			const duration = 0.045;
+			const gain = audioCtx.createGain();
+			gain.gain.value = 0.19;
+			gain.connect(drumGain);
+			for (let i = 0; i < 6; i++) {
+				const osc = audioCtx.createOscillator();
+				osc.type = 'square';
+				const freqs = [3250, 3450, 3650, 3860, 4080, 4300];
+				osc.frequency.value = freqs[i];
+				const oscGain = audioCtx.createGain();
+				oscGain.gain.value = 0.18 / 6;
+				const hp = audioCtx.createBiquadFilter();
+				hp.type = 'highpass';
+				hp.frequency.value = 7000;
+				osc.connect(oscGain).connect(hp).connect(gain);
+				osc.start(now);
+				osc.stop(now + duration);
+			}
+			const noiseLen = duration;
+			const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * noiseLen, audioCtx.sampleRate);
+			const data = buffer.getChannelData(0);
+			for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 60);
+			const src = audioCtx.createBufferSource();
+			src.buffer = buffer;
+			const hp = audioCtx.createBiquadFilter();
+			hp.type = 'highpass';
+			hp.frequency.value = 7000;
+			const noiseGain = audioCtx.createGain();
+			noiseGain.gain.value = 0.08;
+			src.connect(hp).connect(noiseGain).connect(gain);
+			src.start(now);
+			src.stop(now + noiseLen);
+		} else if (row === 1) {
+			// 909 Open hi-hat
+			const duration = 0.65;
+			const gain = audioCtx.createGain();
+			gain.gain.value = 0.11;
+			gain.connect(drumGain);
+			let sources = [];
+			for (let i = 0; i < 6; i++) {
+				const osc = audioCtx.createOscillator();
+				osc.type = 'square';
+				const freqs = [3250, 3450, 3650, 3860, 4080, 4300];
+				osc.frequency.value = freqs[i];
+				const oscGain = audioCtx.createGain();
+				oscGain.gain.value = 0.16 / 6;
+				const hp = audioCtx.createBiquadFilter();
+				hp.type = 'highpass';
+				hp.frequency.value = 7000;
+				osc.connect(oscGain).connect(hp).connect(gain);
+				osc.start(now);
+				osc.stop(now + duration);
+				sources.push(osc);
+			}
+			const noiseLen = duration;
+			const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * noiseLen, audioCtx.sampleRate);
+			const data = buffer.getChannelData(0);
+			for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 1200);
+			const src = audioCtx.createBufferSource();
+			src.buffer = buffer;
+			const hp = audioCtx.createBiquadFilter();
+			hp.type = 'highpass';
+			hp.frequency.value = 7000;
+			const noiseGain = audioCtx.createGain();
+			noiseGain.gain.value = 0.06;
+			src.connect(hp).connect(noiseGain).connect(gain);
+			src.start(now);
+			src.stop(now + noiseLen);
+			sources.push(src);
+			// Track for choke
+			openHatSources.push(...sources);
+		} else if (row === 2) {
+			// 909-style Snare
+			const snapLen = 0.012;
+			const snapBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * snapLen, audioCtx.sampleRate);
+			const snapData = snapBuffer.getChannelData(0);
+			for (let i = 0; i < snapData.length; i++) {
+				snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 18);
+			}
+			const snapSrc = audioCtx.createBufferSource();
+			snapSrc.buffer = snapBuffer;
+			const snapHP = audioCtx.createBiquadFilter();
+			snapHP.type = 'highpass';
+			snapHP.frequency.value = 1800;
+			const snapGain = audioCtx.createGain();
+			snapGain.gain.value = 0.55;
+			snapSrc.connect(snapHP).connect(snapGain).connect(drumGain);
+			snapSrc.start(now);
+			snapSrc.stop(now + snapLen);
 
-		// Even longer, filtered noise burst for snare
-		const snareDecay = 0.32;
-		const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * snareDecay, audioCtx.sampleRate);
-		const data = buffer.getChannelData(0);
-		for (let i = 0; i < data.length; i++) {
-			// Slower decay for longer tail
-			data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 700);
+			const tailLen = 0.18;
+			const tailBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * tailLen, audioCtx.sampleRate);
+			const tailData = tailBuffer.getChannelData(0);
+			for (let i = 0; i < tailData.length; i++) {
+				tailData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 1200);
+			}
+			const tailSrc = audioCtx.createBufferSource();
+			tailSrc.buffer = tailBuffer;
+			const tailBP = audioCtx.createBiquadFilter();
+			tailBP.type = 'bandpass';
+			tailBP.frequency.value = 200;
+			tailBP.Q.value = 0.8;
+			const tailGain = audioCtx.createGain();
+			tailGain.gain.value = 0.32;
+			tailSrc.connect(tailBP).connect(tailGain).connect(drumGain);
+			tailSrc.start(now);
+			tailSrc.stop(now + tailLen);
+
+			const osc = audioCtx.createOscillator();
+			osc.type = 'sine';
+			osc.frequency.setValueAtTime(195, now);
+			osc.frequency.linearRampToValueAtTime(180, now + 0.09);
+			const oscGain = audioCtx.createGain();
+			oscGain.gain.setValueAtTime(0.13, now);
+			oscGain.gain.linearRampToValueAtTime(0, now + 0.09);
+			osc.connect(oscGain).connect(drumGain);
+			osc.start(now);
+			osc.stop(now + 0.09);
+		} else if (row === 3) {
+			// 909 Kick
+			const duration = 0.18;
+			const clickLen = 0.008;
+			const clickBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * clickLen, audioCtx.sampleRate);
+			const clickData = clickBuffer.getChannelData(0);
+			for (let i = 0; i < clickData.length; i++) clickData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 8);
+			const clickSrc = audioCtx.createBufferSource();
+			clickSrc.buffer = clickBuffer;
+			const clickGain = audioCtx.createGain();
+			clickGain.gain.value = 0.18;
+			clickSrc.connect(clickGain).connect(drumGain);
+			clickSrc.start(now);
+			clickSrc.stop(now + clickLen);
+
+			const osc = audioCtx.createOscillator();
+			osc.type = 'sine';
+			osc.frequency.setValueAtTime(62, now);
+			osc.frequency.linearRampToValueAtTime(43, now + duration * 0.6);
+			osc.frequency.linearRampToValueAtTime(36, now + duration);
+			const gain = audioCtx.createGain();
+			gain.gain.setValueAtTime(0.44, now);
+			gain.gain.linearRampToValueAtTime(0.01, now + duration);
+			osc.connect(gain).connect(drumGain);
+			osc.start(now);
+			osc.stop(now + duration);
 		}
-		const src = audioCtx.createBufferSource();
-		src.buffer = buffer;
-		// Bandpass filter to emphasize 300-500 Hz
-		const bp = audioCtx.createBiquadFilter();
-		bp.type = 'bandpass';
-		bp.frequency.value = 400;
-		bp.Q.value = 1.2;
-		const gain = audioCtx.createGain();
-		gain.gain.value = 0.32;
-		src.connect(bp).connect(gain).connect(audioCtx.destination);
-		src.start(now);
-		src.stop(now + snareDecay);
-		// Add a triangle burst for snare body, more in 300-500 Hz
-		const osc = audioCtx.createOscillator();
-		osc.type = 'triangle';
-		osc.frequency.setValueAtTime(400, now);
-		osc.frequency.linearRampToValueAtTime(320, now + 0.18);
-		const oscGain = audioCtx.createGain();
-		oscGain.gain.setValueAtTime(0.08, now);
-		oscGain.gain.linearRampToValueAtTime(0, now + snareDecay);
-		osc.connect(oscGain).connect(audioCtx.destination);
-		osc.start(now);
-		osc.stop(now + snareDecay);
-	} else if (row === 3) { // Kick
-		const osc = audioCtx.createOscillator();
-		osc.type = 'sine';
-		osc.frequency.setValueAtTime(140, now);
-		osc.frequency.linearRampToValueAtTime(40, now + 0.13);
-		const gain = audioCtx.createGain();
-		gain.gain.setValueAtTime(0.32, now);
-		gain.gain.linearRampToValueAtTime(0, now + 0.13);
-		osc.connect(gain).connect(audioCtx.destination);
-		osc.start(now);
-		osc.stop(now + 0.13);
+	} else {
+		// Classic style (previous version)
+		if (row === 0) {
+			// Choke open hats
+			openHatSources.forEach(src => { try { src.stop(); } catch(e){} });
+			openHatSources = [];
+			// Classic Closed hi-hat
+			const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
+			const data = buffer.getChannelData(0);
+			for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 100);
+			const src = audioCtx.createBufferSource();
+			src.buffer = buffer;
+			const lp = audioCtx.createBiquadFilter();
+			lp.type = 'lowpass';
+			lp.frequency.value = 8000;
+			const gain = audioCtx.createGain();
+			gain.gain.value = 0.18;
+			src.connect(lp).connect(gain).connect(drumGain);
+			src.start();
+			src.stop(now + 0.05);
+		} else if (row === 1) {
+			// Classic Open hi-hat
+			const ohhDecay = 1.2;
+			const buffer = audioCtx.createBuffer(1, audioCtx.sampleRate * ohhDecay, audioCtx.sampleRate);
+			const data = buffer.getChannelData(0);
+			for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 1800);
+			const src = audioCtx.createBufferSource();
+			src.buffer = buffer;
+			const gain = audioCtx.createGain();
+			gain.gain.value = 0.13;
+			src.connect(gain).connect(drumGain);
+			src.start();
+			src.stop(now + ohhDecay);
+			// Track for choke
+			openHatSources.push(src);
+		} else if (row === 2) {
+			// Classic Snare (use 909 for now)
+			const snapLen = 0.012;
+			const snapBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * snapLen, audioCtx.sampleRate);
+			const snapData = snapBuffer.getChannelData(0);
+			for (let i = 0; i < snapData.length; i++) {
+				snapData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 18);
+			}
+			const snapSrc = audioCtx.createBufferSource();
+			snapSrc.buffer = snapBuffer;
+			const snapHP = audioCtx.createBiquadFilter();
+			snapHP.type = 'highpass';
+			snapHP.frequency.value = 1800;
+			const snapGain = audioCtx.createGain();
+			snapGain.gain.value = 0.55;
+			snapSrc.connect(snapHP).connect(snapGain).connect(drumGain);
+			snapSrc.start(now);
+			snapSrc.stop(now + snapLen);
+
+			const tailLen = 0.18;
+			const tailBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * tailLen, audioCtx.sampleRate);
+			const tailData = tailBuffer.getChannelData(0);
+			for (let i = 0; i < tailData.length; i++) {
+				tailData[i] = (Math.random() * 2 - 1) * Math.exp(-i / 1200);
+			}
+			const tailSrc = audioCtx.createBufferSource();
+			tailSrc.buffer = tailBuffer;
+			const tailBP = audioCtx.createBiquadFilter();
+			tailBP.type = 'bandpass';
+			tailBP.frequency.value = 200;
+			tailBP.Q.value = 0.8;
+			const tailGain = audioCtx.createGain();
+			tailGain.gain.value = 0.32;
+			tailSrc.connect(tailBP).connect(tailGain).connect(drumGain);
+			tailSrc.start(now);
+			tailSrc.stop(now + tailLen);
+
+			const osc = audioCtx.createOscillator();
+			osc.type = 'sine';
+			osc.frequency.setValueAtTime(195, now);
+			osc.frequency.linearRampToValueAtTime(180, now + 0.09);
+			const oscGain = audioCtx.createGain();
+			oscGain.gain.setValueAtTime(0.13, now);
+			oscGain.gain.linearRampToValueAtTime(0, now + 0.09);
+			osc.connect(oscGain).connect(drumGain);
+			osc.start(now);
+			osc.stop(now + 0.09);
+		} else if (row === 3) {
+			// Classic Kick
+			const osc = audioCtx.createOscillator();
+			osc.type = 'sine';
+			osc.frequency.setValueAtTime(140, now);
+			osc.frequency.linearRampToValueAtTime(40, now + 0.13);
+			const gain = audioCtx.createGain();
+			gain.gain.setValueAtTime(0.32, now);
+			gain.gain.linearRampToValueAtTime(0, now + 0.13);
+			osc.connect(gain).connect(drumGain);
+			osc.start(now);
+			osc.stop(now + 0.13);
+		}
 	}
 }
 
@@ -503,9 +795,15 @@ if (clearBtn) {
 const doubleLengthBtn = document.getElementById('double-length');
 if (doubleLengthBtn) {
 	doubleLengthBtn.onclick = () => {
-		// Double the number of columns by duplicating each row's columns
-		grid = grid.map(row => [...row, ...row]);
-		drumGrid = drumGrid.map(row => [...row, ...row]);
+		// Double the number of columns by duplicating each row's columns, deep copying each cell
+		grid = grid.map(row => [
+			...row.map(cell => [...cell]),
+			...row.map(cell => [...cell])
+		]);
+		drumGrid = drumGrid.map(row => [
+			...row.map(cell => cell),
+			...row.map(cell => cell)
+		]);
 		COLS = COLS * 2;
 		DRUM_COLS = DRUM_COLS * 2;
 		saveState();
