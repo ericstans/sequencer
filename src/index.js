@@ -1,5 +1,53 @@
-// Wait for user interaction before starting sequencer
+import { TIMBRES, SCALES, NOTE_COLORS, MIDI_PROGRAMS, DRUM_ROWS } from './constants.js';
+
+// Top-level state and config declarations
 let sequencerStarted = false;
+let renderQueued = false;
+let styleMode = 'gradient';
+const ROWS = 8;
+let COLS = 8;
+let pitches = [];
+let currentScale = 'chromatic';
+let rootNote = 60; // MIDI note for Middle C (C4)
+let notesPerOctave = 12; // Default 12-TET
+let COLOR_TIMBRES = {
+	red:   { type: 'sine' },
+	blue:  { type: 'square' },
+	green: { type: 'triangle' },
+	yellow:{ type: 'sawtooth' }
+};
+let midiOut = null;
+let midiReady = false;
+let currentColor = 'red';
+let grid, drumGrid;
+let DRUM_COLS = 8;
+let currentCol = 0;
+let intervalId = null;
+let audioCtx = null;
+let sequencerBus = null;
+let masterGain = null;
+let sequencerCompressor = null;
+let drumGain = null;
+let drumStyle = localStorage.getItem('drumStyle') || '909';
+let openHatSources = [];
+
+// DOM element references
+const randomizeBtn = document.getElementById('randomize');
+const halveLengthBtn = document.getElementById('halve-length');
+const clearLocalStorageBtn = document.getElementById('clear-local-storage');
+const styleDropdown = document.createElement('select');
+const tuningSelect = document.getElementById('tuning-system');
+const drumVolSlider = document.getElementById('drum-volume');
+const sequencer = document.getElementById('sequencer');
+const drumGridDiv = document.getElementById('drum-grid');
+const bpmInput = document.getElementById('bpm');
+const startBtn = document.getElementById('start');
+const stopBtn = document.getElementById('stop');
+const clearBtn = document.getElementById('clear');
+const doubleLengthBtn = document.getElementById('double-length');
+// End top-level declarations
+
+// Wait for user interaction before starting sequencer
 function startSequencerOnFirstClick() {
 	if (!sequencerStarted) {
 		sequencerStarted = true;
@@ -9,15 +57,6 @@ function startSequencerOnFirstClick() {
 }
 window.addEventListener('pointerdown', startSequencerOnFirstClick);
 
-// Used to debounce or flag grid rendering
-let renderQueued = false;
-
-import { TIMBRES, SCALES, NOTE_COLORS, MIDI_PROGRAMS, DRUM_ROWS } from './constants.js';
-
-// All possible timbres (synth and MIDI) matching the select lists
-// (TIMBRES now imported)
-
-const randomizeBtn = document.getElementById('randomize');
 if (randomizeBtn) {
 	randomizeBtn.onclick = () => {
 	for (let col = 0; col < COLS; col++) {
@@ -72,7 +111,6 @@ if (randomizeBtn) {
 		renderGrid();
 	};
 }
-const halveLengthBtn = document.getElementById('halve-length');
 if (halveLengthBtn) {
 	halveLengthBtn.onclick = () => {
 		if (COLS > 1 && DRUM_COLS > 1) {
@@ -85,7 +123,6 @@ if (halveLengthBtn) {
 		}
 	};
 }
-const clearLocalStorageBtn = document.getElementById('clear-local-storage');
 if (clearLocalStorageBtn) {
 	clearLocalStorageBtn.onclick = () => {
 		localStorage.removeItem('sequencerState');
@@ -95,8 +132,6 @@ if (clearLocalStorageBtn) {
 
 // Melodic grid
 // Color style mode: 'gradient' or 'divided'
-let styleMode = 'gradient';
-const styleDropdown = document.createElement('select');
 styleDropdown.id = 'color-style-mode';
 styleDropdown.style.margin = '10px 0 20px 10px';
 const opt1 = document.createElement('option');
@@ -116,78 +151,11 @@ window.addEventListener('DOMContentLoaded', () => {
 	const controlsDiv = document.getElementById('controls');
 	if (controlsDiv) controlsDiv.appendChild(styleDropdown);
 	if (document.readyState === 'loading') {
-	    window.addEventListener('DOMContentLoaded', renderTimbreDropdowns);
+    window.addEventListener('DOMContentLoaded', renderTimbreDropdowns);
 	} else {
-	    renderTimbreDropdowns();
+    renderTimbreDropdowns();
 	}
 });
-
-const ROWS = 8;
-let COLS = 8;
-let pitches = [];
-
-// Scale definitions (intervals in semitones from root)
-// (SCALES now imported)
-
-let currentScale = 'chromatic';
-
-let rootNote = 60; // MIDI note for Middle C (C4)
-let notesPerOctave = 12; // Default 12-TET
-const tuningSelect = document.getElementById('tuning-system');
-if (tuningSelect) {
-	tuningSelect.addEventListener('change', () => {
-		if (tuningSelect.value === 'custom') {
-			// For now, just default to 12 if custom is selected
-			notesPerOctave = 12;
-		} else {
-			notesPerOctave = parseInt(tuningSelect.value, 10);
-		}
-		updatePitches();
-		renderGrid();
-	});
-}
-
-function midiToFreq(midi) {
-	return 440 * Math.pow(2, (midi - 69) / 12);
-}
-
-function updatePitches() {
-	const intervals = (SCALES[currentScale] || SCALES.chromatic).intervals;
-	pitches = [];
-	for (let i = 0; i < ROWS; i++) {
-		// Map so row 0 (top) is highest, row ROWS-1 (bottom) is lowest
-		const scaleIdx = ROWS - 1 - i;
-		const interval = intervals[scaleIdx % intervals.length];
-		// n-TET: each step is 1/notesPerOctave of an octave
-		const midi = rootNote + (interval * (12 / notesPerOctave));
-		// For synth, calculate n-TET frequency directly
-		const freq = 440 * Math.pow(2, (midi - 69) / 12 * (12 / notesPerOctave));
-		pitches.push(freq);
-	}
-}
-
-// Wire up scale dropdown
-const scaleSelect = document.getElementById('scale-select');
-if (scaleSelect) {
-	// Clear any static options
-	scaleSelect.innerHTML = '';
-	// Add options dynamically from SCALES
-	Object.entries(SCALES).forEach(([key, obj]) => {
-		const opt = document.createElement('option');
-		opt.value = key;
-		opt.textContent = obj.name;
-		scaleSelect.appendChild(opt);
-	});
-	scaleSelect.value = currentScale;
-	scaleSelect.onchange = () => {
-		currentScale = scaleSelect.value;
-		updatePitches();
-		renderGrid();
-	};
-}
-
-updatePitches();
-
 // Color/timbre support
 // Dynamically generate timbre dropdowns for each color
 function renderTimbreDropdowns() {
@@ -230,18 +198,7 @@ function renderTimbreDropdowns() {
 		});
 	});
 }
-// (NOTE_COLORS and DEFAULT_TIMBRES now imported)
-// Map color to current timbre (waveform or MIDI instrument)
-let COLOR_TIMBRES = {
-	red:   { type: 'sine' },
-	blue:  { type: 'square' },
-	green: { type: 'triangle' },
-	yellow:{ type: 'sawtooth' }
-};
 
-// JZZ MIDI setup
-let midiOut = null;
-let midiReady = false;
 window.addEventListener('DOMContentLoaded', () => {
 	if (window.JZZ && window.JZZ.synth && !midiOut) {
 		midiOut = JZZ().openMidiOut().or(() => { midiReady = false; });
@@ -278,10 +235,70 @@ window.addEventListener('DOMContentLoaded', () => {
 	    renderTimbreDropdowns();
 	}
 });
-let currentColor = 'red';
 
-// Try to load state from localStorage
-let grid, drumGrid;
+if (tuningSelect) {
+	tuningSelect.addEventListener('change', () => {
+		if (tuningSelect.value === 'custom') {
+			// For now, just default to 12 if custom is selected
+			notesPerOctave = 12;
+		} else {
+			notesPerOctave = parseInt(tuningSelect.value, 10);
+		}
+		updatePitches();
+		renderGrid();
+	});
+}
+
+
+
+function midiToFreq(midi) {
+	return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function updatePitches() {
+	const intervals = (SCALES[currentScale] || SCALES.chromatic).intervals;
+	pitches = [];
+	for (let i = 0; i < ROWS; i++) {
+		// Map so row 0 (top) is highest, row ROWS-1 (bottom) is lowest
+		const scaleIdx = ROWS - 1 - i;
+		const interval = intervals[scaleIdx % intervals.length];
+		// n-TET: each step is 1/notesPerOctave of an octave
+		const midi = rootNote + (interval * (12 / notesPerOctave));
+		// For synth, calculate n-TET frequency directly
+		const freq = 440 * Math.pow(2, (midi - 69) / 12 * (12 / notesPerOctave));
+		pitches.push(freq);
+	}
+}
+
+// Wire up scale dropdown
+const scaleSelect = document.getElementById('scale-select');
+if (scaleSelect) {
+	// Clear any static options
+	scaleSelect.innerHTML = '';
+	// Add options dynamically from SCALES
+	Object.entries(SCALES).forEach(([key, obj]) => {
+		const opt = document.createElement('option');
+		opt.value = key;
+		opt.textContent = obj.name;
+		scaleSelect.appendChild(opt);
+	});
+	scaleSelect.value = currentScale;
+	scaleSelect.onchange = () => {
+		currentScale = scaleSelect.value;
+		updatePitches();
+		renderGrid();
+	};
+}
+
+updatePitches();
+
+
+
+
+
+
+
+
 try {
 	const saved = JSON.parse(localStorage.getItem('sequencerState'));
     // Restore BPM if present
@@ -324,29 +341,11 @@ try {
 
 // Drum grid
 // (DRUM_ROWS now imported)
-let DRUM_COLS = 8;
-let currentCol = 0;
-let intervalId = null;
-let audioCtx = null;
-let sequencerBus = null;
-let masterGain = null;
-let sequencerCompressor = null;
-
-// Drum volume node
-let drumGain = null;
-const drumVolSlider = document.getElementById('drum-volume');
 if (drumVolSlider) {
 	drumVolSlider.addEventListener('input', () => {
 		if (drumGain) drumGain.gain.value = parseFloat(drumVolSlider.value);
 	});
 }
-
-const sequencer = document.getElementById('sequencer');
-const drumGridDiv = document.getElementById('drum-grid');
-const bpmInput = document.getElementById('bpm');
-const startBtn = document.getElementById('start');
-const stopBtn = document.getElementById('stop');
-const clearBtn = document.getElementById('clear');
 
 // Create grid UI
 function saveState() {
@@ -527,7 +526,7 @@ function getMidiNoteAndBend(freq) {
 	return { midi, bend: Math.max(0, Math.min(16383, bend)) };
 }
 
-let drumStyle = localStorage.getItem('drumStyle') || '909';
+// (moved to top)
 const drumStyleSelect = document.getElementById('drum-style-select');
 if (drumStyleSelect) {
 	drumStyleSelect.value = drumStyle;
@@ -538,7 +537,7 @@ if (drumStyleSelect) {
 }
 
 // Track open hi-hat sources for choke
-let openHatSources = [];
+// (moved to top)
 
 function playDrum(row) {
 	if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -855,7 +854,7 @@ if (clearBtn) {
 	};
 }
 
-const doubleLengthBtn = document.getElementById('double-length');
+// (moved to top)
 if (doubleLengthBtn) {
 	doubleLengthBtn.onclick = () => {
 		// Double the number of columns by duplicating each row's columns, deep copying each cell
