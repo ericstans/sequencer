@@ -427,7 +427,7 @@ if (volSlider) {
 			osc.start();
 			osc.stop(audioCtx.currentTime + duration);
 			osc.onended = () => gain.disconnect();
-		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
+		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) { 
 			// True MIDI playback using JZZ.js
 			// Convert frequency to MIDI note number
 			const midiNote = Math.round(69 + 12 * Math.log2(freq / 440));
