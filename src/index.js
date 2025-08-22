@@ -477,8 +477,8 @@ if (volSlider) {
 		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
 			
 			let midiFreq = freq;
-            // DISABLED -- Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound an octave lower
-			//if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 2;
+            // Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound an octave lower
+			if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 2;
 
 			// True MIDI playback using JZZ.js
 			// Convert frequency to MIDI note number
