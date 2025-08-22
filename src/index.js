@@ -138,7 +138,22 @@ const SCALES = {
 };
 
 let currentScale = 'chromatic';
+
 let rootNote = 60; // MIDI note for Middle C (C4)
+let notesPerOctave = 12; // Default 12-TET
+const tuningSelect = document.getElementById('tuning-system');
+if (tuningSelect) {
+	tuningSelect.addEventListener('change', () => {
+		if (tuningSelect.value === 'custom') {
+			// For now, just default to 12 if custom is selected
+			notesPerOctave = 12;
+		} else {
+			notesPerOctave = parseInt(tuningSelect.value, 10);
+		}
+		updatePitches();
+		renderGrid();
+	});
+}
 
 function midiToFreq(midi) {
 	return 440 * Math.pow(2, (midi - 69) / 12);
@@ -146,14 +161,16 @@ function midiToFreq(midi) {
 
 function updatePitches() {
 	const intervals = SCALES[currentScale] || SCALES.chromatic;
-	// Fill from top row (high) to bottom (low)
 	pitches = [];
 	for (let i = 0; i < ROWS; i++) {
 		// Map so row 0 (top) is highest, row ROWS-1 (bottom) is lowest
 		const scaleIdx = ROWS - 1 - i;
 		const interval = intervals[scaleIdx % intervals.length];
-		const midi = rootNote + interval + (intervals.length > ROWS ? 0 : 12 * Math.floor(scaleIdx / intervals.length));
-		pitches.push(midiToFreq(midi));
+		// n-TET: each step is 1/notesPerOctave of an octave
+		const midi = rootNote + (interval * (12 / notesPerOctave));
+		// For synth, calculate n-TET frequency directly
+		const freq = 440 * Math.pow(2, (midi - 69) / 12 * (12 / notesPerOctave));
+		pitches.push(freq);
 	}
 }
 
@@ -460,6 +477,20 @@ if (volSlider) {
 }
 
 // Simple drum synths
+// Helper: Given a frequency, return {midi, bend} for MIDI microtonality
+function getMidiNoteAndBend(freq) {
+	// Find nearest MIDI note
+	const midi = Math.round(69 + 12 * Math.log2(freq / 440));
+	const midiFreq = 440 * Math.pow(2, (midi - 69) / 12);
+	// MIDI pitch bend range is usually +/-2 semitones (can be changed, but default is 2)
+	// 8192 is center (no bend), 0 is -2 semitones, 16383 is +2 semitones
+	// Calculate bend in semitones
+	const bendSemis = 12 * Math.log2(freq / midiFreq);
+	// Clamp to +/-2 semitones
+	const maxBend = 2;
+	const bend = Math.round(8192 + (bendSemis / maxBend) * 8192);
+	return { midi, bend: Math.max(0, Math.min(16383, bend)) };
+}
 
 let drumStyle = localStorage.getItem('drumStyle') || '909';
 const drumStyleSelect = document.getElementById('drum-style-select');
