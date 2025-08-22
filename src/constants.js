@@ -39,13 +39,6 @@ export const SCALES = {
 
 export const NOTE_COLORS = ['red', 'blue', 'green', 'yellow'];
 
-export const DEFAULT_TIMBRES = {
-    red:   'sine',
-    blue:  'square',
-    green: 'triangle',
-    yellow:'sawtooth'
-};
-
 export const MIDI_PROGRAMS = {
     acoustic_grand_piano: 0,
     electric_piano: 4,
