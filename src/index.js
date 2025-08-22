@@ -1,3 +1,14 @@
+// Wait for user interaction before starting sequencer
+let sequencerStarted = false;
+function startSequencerOnFirstClick() {
+	if (!sequencerStarted) {
+		sequencerStarted = true;
+		startSequencer();
+		window.removeEventListener('pointerdown', startSequencerOnFirstClick);
+	}
+}
+window.addEventListener('pointerdown', startSequencerOnFirstClick);
+
 // Used to debounce or flag grid rendering
 let renderQueued = false;
 
@@ -141,7 +152,7 @@ function midiToFreq(midi) {
 }
 
 function updatePitches() {
-	const intervals = SCALES[currentScale] || SCALES.chromatic;
+	const intervals = (SCALES[currentScale] || SCALES.chromatic).intervals;
 	pitches = [];
 	for (let i = 0; i < ROWS; i++) {
 		// Map so row 0 (top) is highest, row ROWS-1 (bottom) is lowest
@@ -158,6 +169,16 @@ function updatePitches() {
 // Wire up scale dropdown
 const scaleSelect = document.getElementById('scale-select');
 if (scaleSelect) {
+	// Clear any static options
+	scaleSelect.innerHTML = '';
+	// Add options dynamically from SCALES
+	Object.entries(SCALES).forEach(([key, obj]) => {
+		const opt = document.createElement('option');
+		opt.value = key;
+		opt.textContent = obj.name;
+		scaleSelect.appendChild(opt);
+	});
+	scaleSelect.value = currentScale;
 	scaleSelect.onchange = () => {
 		currentScale = scaleSelect.value;
 		updatePitches();
@@ -237,8 +258,6 @@ window.addEventListener('DOMContentLoaded', () => {
 	    renderTimbreDropdowns();
 	}
 });
-
-// (MIDI_PROGRAMS now imported)
 
 // Handle timbre dropdown changes
 window.addEventListener('DOMContentLoaded', () => {
@@ -457,10 +476,12 @@ if (volSlider) {
 			osc.stop(audioCtx.currentTime + duration);
 			osc.onended = () => gain.disconnect();
 		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
-            if (timbre.midi === 33) playFreq = freq / 2;
+			// Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound an octave lower
+			let midiFreq = freq;
+			if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 2;
 			// True MIDI playback using JZZ.js
 			// Convert frequency to MIDI note number
-			const midiNote = Math.round(69 + 12 * Math.log2(freq / 440));
+			const midiNote = Math.round(69 + 12 * Math.log2(midiFreq / 440));
 			// Scale velocity by pattern volume slider
 			let vol = 1.0;
 			const volSlider = document.getElementById('master-volume');
@@ -822,10 +843,7 @@ bpmInput.onchange = () => {
 
 // Initial render
 renderGrid();
-// Start sequencer by default
-window.addEventListener('DOMContentLoaded', () => {
-	startSequencer();
-});
+// Do not start sequencer until user interacts with the page
 
 // Clear button logic
 if (clearBtn) {
