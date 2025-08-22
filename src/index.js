@@ -1,23 +1,30 @@
+// Used to debounce or flag grid rendering
+let renderQueued = false;
+
+// All possible timbres (synth and MIDI) matching the select lists
+const TIMBRES = [
+	{ value: 'sine', label: 'Sine', type: 'sine' },
+	{ value: 'square', label: 'Square', type: 'square' },
+	{ value: 'triangle', label: 'Triangle', type: 'triangle' },
+	{ value: 'sawtooth', label: 'Sawtooth', type: 'sawtooth' },
+	{ value: 'acoustic_grand_piano', label: 'Piano (MIDI)', midi: 0, name: 'acoustic_grand_piano' },
+	{ value: 'electric_piano', label: 'Electric Piano (MIDI)', midi: 4, name: 'electric_piano' },
+	{ value: 'organ', label: 'Organ (MIDI)', midi: 16, name: 'organ' },
+	{ value: 'guitar', label: 'Guitar (MIDI)', midi: 24, name: 'guitar' },
+	{ value: 'electric_bass', label: 'Electric Bass (MIDI)', midi: 33, name: 'electric_bass' },
+	{ value: 'violin', label: 'Violin (MIDI)', midi: 40, name: 'violin' },
+	{ value: 'clarinet', label: 'Clarinet (MIDI)', midi: 71, name: 'clarinet' },
+	{ value: 'flute', label: 'Flute (MIDI)', midi: 73, name: 'flute' },
+	{ value: 'ocarina', label: 'Ocarina (MIDI)', midi: 80, name: 'ocarina' },
+	{ value: 'bird_tweet', label: 'Bird Tweet (MIDI)', midi: 123, name: 'bird_tweet' },
+	{ value: 'kalimba', label: 'Kalimba (MIDI)', midi: 108, name: 'kalimba' },
+	{ value: 'steel_drums', label: 'Steel Drums (MIDI)', midi: 114, name: 'steel_drums' }
+];
+
 const randomizeBtn = document.getElementById('randomize');
 if (randomizeBtn) {
 	randomizeBtn.onclick = () => {
-		// All possible timbres (synth and MIDI) matching the select lists
-		const allTimbres = [
-			{ type: 'sine' },
-			{ type: 'square' },
-			{ type: 'triangle' },
-			{ type: 'sawtooth' },
-			{ midi: 0, name: 'acoustic_grand_piano' },
-			{ midi: 4, name: 'electric_piano' },
-			{ midi: 16, name: 'organ' },
-			{ midi: 24, name: 'guitar' },
-			{ midi: 40, name: 'violin' },
-			{ midi: 71, name: 'clarinet' },
-			{ midi: 73, name: 'flute' },
-			{ midi: 108, name: 'kalimba' },
-			{ midi: 114, name: 'steel_drums' }
-		];
-		for (let col = 0; col < COLS; col++) {
+	for (let col = 0; col < COLS; col++) {
 			const noteCount = Math.floor(Math.random() * 4); // 0-3
 			let notesLeft = noteCount;
 			let availableRows = Array.from({ length: ROWS }, (_, i) => i);
@@ -50,7 +57,7 @@ if (randomizeBtn) {
 						colors.push(color);
 						colorPool.splice(colorIdx, 1);
 						// Randomize the timbre for this color
-						const t = allTimbres[Math.floor(Math.random() * allTimbres.length)];
+						const t = TIMBRES[Math.floor(Math.random() * TIMBRES.length)];
 						COLOR_TIMBRES[color] = t;
 						// Also update the dropdown if present
 						const sel = document.querySelector(`.timbre-dropdown[data-color='${color}']`);
@@ -112,6 +119,11 @@ styleDropdown.onchange = () => {
 window.addEventListener('DOMContentLoaded', () => {
 	const controlsDiv = document.getElementById('controls');
 	if (controlsDiv) controlsDiv.appendChild(styleDropdown);
+	if (document.readyState === 'loading') {
+	    window.addEventListener('DOMContentLoaded', renderTimbreDropdowns);
+	} else {
+	    renderTimbreDropdowns();
+	}
 });
 
 const ROWS = 8;
@@ -187,6 +199,47 @@ if (scaleSelect) {
 updatePitches();
 
 // Color/timbre support
+// Dynamically generate timbre dropdowns for each color
+function renderTimbreDropdowns() {
+	const container = document.getElementById('timbre-selectors');
+	if (!container) return;
+	container.innerHTML = '';
+	const colorNames = [
+		{ color: 'red', label: 'Red', style: 'color:red;' },
+		{ color: 'blue', label: 'Blue', style: 'color:blue;' },
+		{ color: 'green', label: 'Green', style: 'color:green;' },
+		{ color: 'yellow', label: 'Yellow', style: 'color:gold;' }
+	];
+	colorNames.forEach(({ color, label, style }) => {
+		const div = document.createElement('div');
+		div.innerHTML = `<label style="${style}">${label}: <select class="timbre-dropdown" data-color="${color}"></select></label>`;
+		container.appendChild(div);
+		const sel = div.querySelector('select');
+		TIMBRES.forEach(t => {
+			const opt = document.createElement('option');
+			opt.value = t.value;
+			opt.textContent = t.label;
+			sel.appendChild(opt);
+		});
+		// Set current value if available
+		if (COLOR_TIMBRES[color]) {
+			if (COLOR_TIMBRES[color].type) sel.value = COLOR_TIMBRES[color].type;
+			else if (COLOR_TIMBRES[color].name) sel.value = COLOR_TIMBRES[color].name;
+		}
+		// Add event listener to update COLOR_TIMBRES on change
+		sel.addEventListener('change', e => {
+			const val = sel.value;
+			if (['sine','square','triangle','sawtooth'].includes(val)) {
+				COLOR_TIMBRES[color] = { type: val };
+			} else {
+				const midiObj = TIMBRES.find(t => t.value === val);
+				if (midiObj && midiObj.midi !== undefined) {
+					COLOR_TIMBRES[color] = { midi: midiObj.midi, name: val };
+				}
+			}
+		});
+	});
+}
 const NOTE_COLORS = ['red', 'blue', 'green', 'yellow'];
 // Default timbres
 const DEFAULT_TIMBRES = {
@@ -216,6 +269,11 @@ window.addEventListener('DOMContentLoaded', () => {
 			midiOut = JZZ().openMidiOut('WebAudioTinySynth');
 		}
 	}
+	if (document.readyState === 'loading') {
+	    window.addEventListener('DOMContentLoaded', renderTimbreDropdowns);
+	} else {
+	    renderTimbreDropdowns();
+	}
 });
 
 // Map MIDI instrument names to General MIDI program numbers (subset)
@@ -224,9 +282,12 @@ const MIDI_PROGRAMS = {
 	electric_piano: 4,
 	organ: 16,
 	guitar: 24,
+	electric_bass: 33,
 	violin: 40,
 	clarinet: 71,
 	flute: 73,
+	ocarina: 80,
+	bird_tweet: 123,
 	kalimba: 108,
 	steel_drums: 114
 };
@@ -244,6 +305,11 @@ window.addEventListener('DOMContentLoaded', () => {
 			}
 		});
 	});
+	if (document.readyState === 'loading') {
+	    window.addEventListener('DOMContentLoaded', renderTimbreDropdowns);
+	} else {
+	    renderTimbreDropdowns();
+	}
 });
 let currentColor = 'red';
 
@@ -292,8 +358,6 @@ try {
 // Drum grid
 const DRUM_ROWS = 4;
 let DRUM_COLS = 8;
-const drumNames = ['CLOSED HI HAT', 'OPEN HI HAT', 'SNARE', 'KICK'];
-
 let currentCol = 0;
 let intervalId = null;
 let audioCtx = null;
@@ -444,7 +508,8 @@ if (volSlider) {
 			osc.start();
 			osc.stop(audioCtx.currentTime + duration);
 			osc.onended = () => gain.disconnect();
-		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) { 
+		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
+            if (timbre.midi === 33) playFreq = freq / 2;
 			// True MIDI playback using JZZ.js
 			// Convert frequency to MIDI note number
 			const midiNote = Math.round(69 + 12 * Math.log2(freq / 440));
@@ -461,6 +526,7 @@ if (volSlider) {
 			}, duration * 1000);
 		} else {
 			// Fallback: WebAudio sine
+            alert('Fallback called for timbre: ' + JSON.stringify(timbre));
 			const osc = audioCtx.createOscillator();
 			const gain = audioCtx.createGain();
 			osc.type = 'sine';
@@ -658,7 +724,7 @@ function playDrum(row) {
 			osc.frequency.linearRampToValueAtTime(43, now + duration * 0.6);
 			osc.frequency.linearRampToValueAtTime(36, now + duration);
 			const gain = audioCtx.createGain();
-			gain.gain.setValueAtTime(0.44, now);
+			gain.gain.setValueAtTime(0.70, now);
 			gain.gain.linearRampToValueAtTime(0.01, now + duration);
 			osc.connect(gain).connect(drumGain);
 			osc.start(now);
