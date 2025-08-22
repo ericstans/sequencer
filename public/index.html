@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>8x8 Musical Sequencer</title>
+        <style>
+            body { font-family: sans-serif; background: #222; color: #eee; }
+            #sequencer {
+                display: grid;
+                grid-template-columns: repeat(8, 40px);
+                grid-template-rows: repeat(8, 40px);
+                gap: 4px;
+                margin: 40px auto;
+                width: max-content;
+            }
+            .cell {
+                width: 40px; height: 40px;
+                background: #444;
+                border-radius: 6px;
+                border: 1px solid #333;
+                cursor: pointer;
+                transition: background 0.1s;
+                display: flex; align-items: center; justify-content: center;
+            }
+            .cell.on { background: #4caf50; }
+            .cell.active { box-shadow: 0 0 0 3px #ffeb3b; }
+            #drum-grid {
+                display: grid;
+                grid-template-columns: repeat(8, 40px);
+                grid-template-rows: repeat(4, 40px);
+                gap: 4px;
+                width: max-content;
+            }
+            #drum-labels {
+                color: #ffeb3b;
+                font-weight: bold;
+                font-size: 13px;
+                text-align: right;
+                margin-right: 8px;
+                /* Visually offset label width to center grid */
+                margin-left: -115px;
+                pointer-events: none;
+            }
+            #controls { text-align: center; margin-top: 20px; }
+            #bpm { width: 60px; }
+        </style>
+</head>
+<body>
+            <div id="sequencer"></div>
+            <div id="color-selectors" style="display: flex; justify-content: center; gap: 16px; margin: 16px 0;">
+                <button class="color-sel" data-color="red" style="background:red; width:32px; height:32px; border-radius:50%; border:2px solid #fff; outline:none; cursor:pointer;"></button>
+                <button class="color-sel" data-color="blue" style="background:blue; width:32px; height:32px; border-radius:50%; border:2px solid #fff; outline:none; cursor:pointer;"></button>
+                <button class="color-sel" data-color="green" style="background:green; width:32px; height:32px; border-radius:50%; border:2px solid #fff; outline:none; cursor:pointer;"></button>
+                <button class="color-sel" data-color="yellow" style="background:gold; width:32px; height:32px; border-radius:50%; border:2px solid #fff; outline:none; cursor:pointer;"></button>
+            </div>
+        <div style="height: 30px;"></div>
+        <div style="display: flex; justify-content: center; align-items: flex-start; width: 100%;">
+            <div style="margin: 0 auto; display: flex; align-items: flex-start; gap: 10px;">
+                <div id="drum-labels">
+                    <div style="height: 40px; display: flex; align-items: center;">CLOSED HI HAT</div>
+                    <div style="height: 40px; display: flex; align-items: center;">OPEN HI HAT</div>
+                    <div style="height: 40px; display: flex; align-items: center;">SNARE</div>
+                    <div style="height: 40px; display: flex; align-items: center;">KICK</div>
+                </div>
+                <div id="drum-grid"></div>
+            </div>
+        </div>
+    <div id="controls">
+        <label style="margin-left:16px;">Master Volume:
+            <input type="range" id="master-volume" min="0" max="1" step="0.01" value="0.8" style="vertical-align:middle;width:120px;">
+        </label>
+        <label>BPM: <input type="number" id="bpm" value="120" min="40" max="300"></label>
+        <label style="margin-left:16px;">Scale:
+            <select id="scale-select">
+                <option value="chromatic">Chromatic</option>
+                <option value="major">Major</option>
+                <option value="minor">Minor</option>
+                <option value="pentatonic">Pentatonic</option>
+                <option value="blues">Blues</option>
+                <option value="dorian">Dorian</option>
+                <option value="phrygian">Phrygian</option>
+                <option value="lydian">Lydian</option>
+                <option value="mixolydian">Mixolydian</option>
+                <option value="locrian">Locrian</option>
+                <option value="whole-tone">Whole Tone</option>
+                <option value="octatonic">Octatonic (Diminished)</option>
+                <option value="harmonic-minor">Harmonic Minor</option>
+                <option value="double-harmonic">Double Harmonic</option>
+                <option value="enigmatic">Enigmatic</option>
+            </select>
+        </label>
+        <button id="start">Start</button>
+        <button id="stop">Stop</button>
+    <button id="clear">Clear</button>
+    <button id="double-length">Double Length</button>
+    <button id="halve-length">Halve Length</button>
+    <button id="randomize">Randomize</button>
+    <button id="clear-local-storage">Clear Local Storage</button>
+    </div>
+    <script src="index.js"></script>
+</body>
+</html>
