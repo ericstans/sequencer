@@ -1,6 +1,10 @@
 import { TIMBRES, SCALES, NOTE_COLORS, MIDI_PROGRAMS, DRUM_ROWS } from './constants.js';
 
 // Top-level state and config declarations
+// For MIDI polyphony: track active notes and channel assignment
+const MIDI_POLY_CHANNELS = 15; // Channels 1-15 (0 is reserved for drums/GM)
+let midiChannelPool = Array.from({length: MIDI_POLY_CHANNELS}, (_, i) => i+1); // [1..15]
+let midiActiveNotes = {}; // channel: midiNote
 // Track last played Electric Bass note for sustain
 let lastElectricBassNote = null;
 let lastElectricBassChannel = 0;
@@ -10,7 +14,7 @@ let styleMode = 'gradient';
 const ROWS = 8;
 let COLS = 8;
 let pitches = [];
-let currentScale = 'chromatic';
+let currentScale = 'major';
 let rootNote = 60; // MIDI note for Middle C (C4)
 let notesPerOctave = 12; // Default 12-TET
 let COLOR_TIMBRES = {
@@ -301,6 +305,13 @@ function updatePitches() {
 const scaleSelect = document.getElementById('scale-select');
 if (scaleSelect) {
 	updateScaleDropdown();
+	// Set dropdown to Major if available, else Chromatic
+	if (scaleSelect.querySelector("option[value='major']")) {
+		scaleSelect.value = 'major';
+	} else {
+		scaleSelect.value = 'chromatic';
+	}
+	currentScale = scaleSelect.value;
 	scaleSelect.onchange = () => {
 		currentScale = scaleSelect.value;
 		updatePitches();
@@ -504,24 +515,44 @@ if (volSlider) {
 			const volSlider = document.getElementById('master-volume');
 			if (volSlider) vol = parseFloat(volSlider.value);
 			const velocity = Math.round(100 * vol); // scale 0-100
-			const channel = 0; // All colors use channel 0 for now
+
+			// Polyphonic channel assignment (channels 1-15)
+			let channel = 1;
+			// For Electric Bass/Fretless, still use channel 0 for sustain logic
+			if (timbre.midi === 33 || timbre.midi === 35) {
+				channel = 0;
+			} else {
+				// Find a free channel
+				for (let ch = 1; ch <= MIDI_POLY_CHANNELS; ch++) {
+					if (!midiActiveNotes[ch]) {
+						channel = ch;
+						break;
+					}
+				}
+				// If all channels are busy, steal the first
+				if (midiActiveNotes[channel]) {
+					midiOut.noteOff(channel, midiActiveNotes[channel], 0);
+				}
+			}
+
 			midiOut.program(channel, timbre.midi);
 			midiOut.pitchBend(channel, bend);
-			// Sustain Electric Bass and Fretless Bass (MIDI 33 and 35) until next note
+			midiOut.noteOn(channel, midiNote, velocity);
+			midiActiveNotes[channel] = midiNote;
+
+			setTimeout(() => {
+				midiOut.noteOff(channel, midiNote, 0);
+				delete midiActiveNotes[channel];
+			}, duration * 1000);
+
+			// Electric Bass/Fretless sustain logic (still on channel 0)
 			if (timbre.midi === 33 || timbre.midi === 35) {
-				// Turn off previous note if any
 				if (lastElectricBassNote !== null) {
 					midiOut.noteOff(lastElectricBassChannel, lastElectricBassNote, 0);
 				}
-				midiOut.noteOn(channel, midiNote, velocity);
 				lastElectricBassNote = midiNote;
 				lastElectricBassChannel = channel;
 				// Do NOT schedule noteOff here; will be turned off by next note
-			} else {
-				midiOut.noteOn(channel, midiNote, velocity);
-				setTimeout(() => {
-					midiOut.noteOff(channel, midiNote, 0);
-				}, duration * 1000);
 			}
 		} else {
 			// Fallback: WebAudio sine
