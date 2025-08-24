@@ -1,6 +1,9 @@
 import { TIMBRES, SCALES, NOTE_COLORS, MIDI_PROGRAMS, DRUM_ROWS } from './constants.js';
 
 // Top-level state and config declarations
+// Track last played Electric Bass note for sustain
+let lastElectricBassNote = null;
+let lastElectricBassChannel = 0;
 let sequencerStarted = false;
 let renderQueued = false;
 let styleMode = 'gradient';
@@ -236,14 +239,36 @@ window.addEventListener('DOMContentLoaded', () => {
 	}
 });
 
+
+function updateScaleDropdown() {
+	if (!scaleSelect) return;
+	scaleSelect.innerHTML = '';
+	if (notesPerOctave === 12) {
+		// All scales available
+		Object.entries(SCALES).forEach(([key, obj]) => {
+			const opt = document.createElement('option');
+			opt.value = key;
+			opt.textContent = obj.name;
+			scaleSelect.appendChild(opt);
+		});
+	} else {
+		// Only Chromatic available
+		const opt = document.createElement('option');
+		opt.value = 'chromatic';
+		opt.textContent = SCALES.chromatic.name || 'Chromatic';
+		scaleSelect.appendChild(opt);
+	}
+	// Set value and currentScale
+	if (notesPerOctave !== 12 || !SCALES[currentScale]) {
+		currentScale = 'chromatic';
+	}
+	scaleSelect.value = currentScale;
+}
+
 if (tuningSelect) {
 	tuningSelect.addEventListener('change', () => {
-		if (tuningSelect.value === 'custom') {
-			// For now, just default to 12 if custom is selected
-			notesPerOctave = 12;
-		} else {
-			notesPerOctave = parseInt(tuningSelect.value, 10);
-		}
+		notesPerOctave = parseInt(tuningSelect.value, 10);
+		updateScaleDropdown();
 		updatePitches();
 		renderGrid();
 	});
@@ -261,7 +286,9 @@ function updatePitches() {
 	for (let i = 0; i < ROWS; i++) {
 		// Map so row 0 (top) is highest, row ROWS-1 (bottom) is lowest
 		const scaleIdx = ROWS - 1 - i;
-		const interval = intervals[scaleIdx % intervals.length];
+		const scaleLen = intervals.length;
+		const octave = Math.floor(scaleIdx / scaleLen);
+		const interval = intervals[scaleIdx % scaleLen] + octave * notesPerOctave;
 		// n-TET: each step is 1/notesPerOctave of an octave
 		const midi = rootNote + (interval * (12 / notesPerOctave));
 		// For synth, calculate n-TET frequency directly
@@ -270,19 +297,10 @@ function updatePitches() {
 	}
 }
 
-// Wire up scale dropdown
+
 const scaleSelect = document.getElementById('scale-select');
 if (scaleSelect) {
-	// Clear any static options
-	scaleSelect.innerHTML = '';
-	// Add options dynamically from SCALES
-	Object.entries(SCALES).forEach(([key, obj]) => {
-		const opt = document.createElement('option');
-		opt.value = key;
-		opt.textContent = obj.name;
-		scaleSelect.appendChild(opt);
-	});
-	scaleSelect.value = currentScale;
+	updateScaleDropdown();
 	scaleSelect.onchange = () => {
 		currentScale = scaleSelect.value;
 		updatePitches();
@@ -475,9 +493,8 @@ if (volSlider) {
 			osc.stop(audioCtx.currentTime + duration);
 			osc.onended = () => gain.disconnect();
 		} else if (timbre.midi !== undefined && window.JZZ && midiOut && midiReady) {
-			
 			let midiFreq = freq;
-            // Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound two octave lower
+			// Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound two octaves lower
 			if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 4;
 
 			// True MIDI playback using JZZ.js
@@ -490,10 +507,22 @@ if (volSlider) {
 			const velocity = Math.round(100 * vol); // scale 0-100
 			const channel = 0; // All colors use channel 0 for now
 			midiOut.program(channel, timbre.midi);
-			midiOut.noteOn(channel, midiNote, velocity);
-			setTimeout(() => {
-				midiOut.noteOff(channel, midiNote, 0);
-			}, duration * 1000);
+			// Sustain Electric Bass and Fretless Bass (MIDI 33 and 35) until next note
+			if (timbre.midi === 33 || timbre.midi === 35) {
+				// Turn off previous note if any
+				if (lastElectricBassNote !== null) {
+					midiOut.noteOff(lastElectricBassChannel, lastElectricBassNote, 0);
+				}
+				midiOut.noteOn(channel, midiNote, velocity);
+				lastElectricBassNote = midiNote;
+				lastElectricBassChannel = channel;
+				// Do NOT schedule noteOff here; will be turned off by next note
+			} else {
+				midiOut.noteOn(channel, midiNote, velocity);
+				setTimeout(() => {
+					midiOut.noteOff(channel, midiNote, 0);
+				}, duration * 1000);
+			}
 		} else {
 			// Fallback: WebAudio sine
             alert('Fallback called for timbre: ' + JSON.stringify(timbre));
