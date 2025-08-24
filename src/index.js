@@ -1,3 +1,15 @@
+// Swing state
+let swing = 0;
+const swingSlider = document.getElementById('swing-slider');
+const swingValue = document.getElementById('swing-value');
+if (swingSlider && swingValue) {
+	swingSlider.addEventListener('input', () => {
+		swing = parseFloat(swingSlider.value);
+		swingValue.textContent = Math.round(swing * 100) + '%';
+	});
+	swing = parseFloat(swingSlider.value);
+	swingValue.textContent = Math.round(swing * 100) + '%';
+}
 import { TIMBRES, SCALES, NOTE_COLORS, MIDI_PROGRAMS, DRUM_ROWS } from './constants.js';
 
 // Top-level state and config declarations
@@ -880,14 +892,23 @@ function step() {
 function startSequencer() {
 	if (intervalId) return;
 	let bpm = parseInt(bpmInput.value, 10) || 120;
-	let interval = (60 / bpm) / 2 * 1000; // 8th notes
+	let baseInterval = (60 / bpm) / 2 * 1000; // 8th notes
 	currentCol = 0;
 	renderGrid();
-	intervalId = setInterval(step, interval);
+	// Custom swing interval logic
+	let col = 0;
+	function swingStep() {
+		step();
+		col = (col + 1) % COLS;
+		let isSwing = (col % 2 === 1);
+		let delay = baseInterval * (isSwing ? (1 + swing) : (1 - swing));
+		intervalId = setTimeout(swingStep, delay);
+	}
+	swingStep();
 }
 
 function stopSequencer() {
-	clearInterval(intervalId);
+	if (intervalId) clearTimeout(intervalId);
 	intervalId = null;
 	currentCol = -1;
 	renderGrid();
