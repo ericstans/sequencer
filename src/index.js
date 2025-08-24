@@ -497,9 +497,8 @@ if (volSlider) {
 			// Special case: Electric Bass and Fretless Bass (MIDI 33 and 35) should sound two octaves lower
 			if (timbre.midi === 33 || timbre.midi === 35) midiFreq = freq / 4;
 
-			// True MIDI playback using JZZ.js
-			// Convert frequency to MIDI note number
-			const midiNote = Math.round(69 + 12 * Math.log2(midiFreq / 440));
+			// Microtonal MIDI: get nearest note and pitch bend
+			const { midi: midiNote, bend } = getMidiNoteAndBend(midiFreq);
 			// Scale velocity by pattern volume slider
 			let vol = 1.0;
 			const volSlider = document.getElementById('master-volume');
@@ -507,6 +506,7 @@ if (volSlider) {
 			const velocity = Math.round(100 * vol); // scale 0-100
 			const channel = 0; // All colors use channel 0 for now
 			midiOut.program(channel, timbre.midi);
+			midiOut.pitchBend(channel, bend);
 			// Sustain Electric Bass and Fretless Bass (MIDI 33 and 35) until next note
 			if (timbre.midi === 33 || timbre.midi === 35) {
 				// Turn off previous note if any
